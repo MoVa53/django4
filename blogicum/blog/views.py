@@ -1,15 +1,27 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
-
+from django.core.paginator import Paginator
 from blog.forms import CommentForm, PostForm, ProfileForm
 from blog.models import Category, Comment, Post
 from blog.utils import posts_pagination, query_post
 
 
-def index(request):
+def query_post(manager=Post.objects, filters=False):
+    if filters:
+        return manager.filter(is_published=True)
+    return manager.filter(is_published=True)
 
-    page_obj = posts_pagination(request, query_post())
+
+def posts_pagination(request, posts, per_page=10):
+    paginator = Paginator(posts, per_page)
+    page_number = request.GET.get('page')
+    return paginator.get_page(page_number)
+
+
+def index(request):
+    posts = query_post().order_by('-pub_date')
+    page_obj = posts_pagination(request, posts)
     context = {'page_obj': page_obj}
     return render(request, 'blog/index.html', context)
 
@@ -63,10 +75,15 @@ def edit_post(request, post_id):
     post = get_object_or_404(Post, id=post_id)
     if request.user != post.author:
         return redirect('blog:post_detail', post_id)
-    form = PostForm(request.POST or None, instance=post)
-    if form.is_valid():
-        form.save()
-        return redirect('blog:post_detail', post_id)
+
+    if request.method == 'POST':
+        form = PostForm(request.POST, request.FILES, instance=post)
+        if form.is_valid():
+            form.save()
+            return redirect('blog:post_detail', post_id)
+    else:
+        form = PostForm(instance=post)
+
     context = {'form': form}
     return render(request, 'blog/create.html', context)
 
